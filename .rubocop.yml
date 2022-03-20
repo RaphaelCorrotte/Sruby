@@ -1,0 +1,44 @@
+AllCops:
+  TargetRubyVersion: 2.5
+
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Layout/LineLength:
+  Max: 200
+
+Style/HashSyntax:
+  Enabled: true
+  EnforcedStyle: hash_rockets
+
+Layout/EndOfLine:
+  Enabled: false
+
+Metrics/ModuleLength:
+  Enabled: false
+
+Metrics/MethodLength:
+  Enabled: false
+
+Lint/RedundantStringCoercion:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Metrics/PerceivedComplexity:
+  Enabled: false
+
+Metrics/AbcSize:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Enabled: false
+
+Metrics/BlockLength:
+  Enabled: false
