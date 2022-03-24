@@ -8,18 +8,28 @@ module Sruby
   class Database
     attr_reader :db
 
+    # Creates a new database object
+    # @param [String, Hash, Sqlite3::Database] options The database file to open, or a hash of options
     def initialize(options = Hash[:name => "sruby.db"])
       case options
       when String
         @db = SQLite3::Database.new(options)
       when Hash
         @db = SQLite3::Database.new(options[:name])
+      when SQLite3::Database
+        @db = options
       else
         raise SrubyError, "Invalid argument: #{options.inspect}"
       end
       @db.results_as_hash = true if options.is_a?(Hash) && options[:results_as_hash]
     end
 
+    # Creates a new Table in database
+    # @param [String] table_name The name of the table
+    # @example
+    # db = Sruby::Database.new
+    # db.create_table("users")
+    # @return [Table] The database object
     def create(table_name)
       @db.execute <<~SQL
         CREATE TABLE IF NOT EXISTS #{table_name} (
@@ -27,16 +37,27 @@ module Sruby
           value TEXT
         );
       SQL
-      define_singleton_method(table_name.downcase) do
-        Table.new(@db, table_name)
-      end
+
+      Database.attr_accessor table_name
+      instance_variable_set("@#{table_name}", Table.new(@db, table_name))
+      instance_variable_get("@#{table_name}")
     end
 
+    # Insert values into a table
+    # @param [String] table_name The name of the table
+    # @param [String, Hash] values The values to insert
+    # @example
+    # db = Sruby::Database.new
+    # db.create_table("users")
+    # db.insert("users", "person" => "John", "age" => "24")
+    # db.insert("users", Hash["person" => "John", "age" => "24"])
+    # db.insert("users", "person", "John")
+    # @return [Array] The database object
     def insert(table_name, *values)
       case values[0]
       when Hash
         values[0].stringify_keys!
-        values_as_paths = paths(values[0])
+        values_as_paths = values[0].paths
         values_as_paths.each do |path, value|
           p path, value
           @db.execute("INSERT INTO #{table_name} (name, value) VALUES (?, ?)", path.join("."), value)
@@ -44,66 +65,68 @@ module Sruby
       else
         @db.execute("INSERT INTO #{table_name} (name, value) VALUES (?, ?)", values[0].to_s, values[1])
       end
+    rescue SQLite3::ConstraintException
+      raise SrubyError, "Duplicate key"
     end
 
+    # Updates values in a table
+    # @param [String] table_name The name of the table
+    # @param [String, Hash] values The values to update
+    # @example
+    # db = Sruby::Database.new
+    # db.create_table("users")
+    # db.insert("users", "person" => "John", "age" => "24")
+    # db.update("users", "person" => "John", "age" => "25")
+    # db.update("users", Hash["person" => "John", "age" => "25"])
+    # @return [Array] The database object
     def update(table_name, *values)
       case values[0]
       when Hash
         values[0].stringify_keys!
-        values[0].each do |value|
-          @db.execute("REPLACE INTO #{table_name} (name, value) VALUES (?, ?)", value)
+        values_as_paths = values[0].paths
+        values_as_paths.each do |path, value|
+          p path, value
+          @db.execute("REPLACE INTO #{table_name} (name, value) VALUES (?, ?)", path.join("."), value)
         end
       else
         @db.execute("REPLACE INTO #{table_name} (name, value) VALUES (?, ?)", values[0].to_s, values[1])
       end
     end
 
-    def find(table, conditions = {})
-      conditions.stringify_keys!
-      conditions.stringify_values!
-      @db.execute("SELECT * FROM  #{table} WHERE #{conditions.map { |k, v| "#{k} = '#{v}'" }.join(" AND ")}")
-    end
-
+    # Get a value from a table
+    # @param [String] table_name The name of the table
+    # @param [String] name The value to get
+    # @param [Nil, String] path The path to get
+    # @example
+    # db = Sruby::Database.new
+    # db.create_table("users")
+    # db.insert("users", "person" => "John", "age" => "24")
+    # db.get("users", "person")
+    # @return [String] The value
     def get(table_name, name, path = nil)
       if path.nil?
         @db.execute("SELECT value FROM #{table_name} WHERE name = ?", name)
       else
-        path_name = path.concat(name)
-        @db.execute("SELECT value FROM #{table_name} WHERE name = ?", path_name)
+        path_name = case path
+                    when Array
+                      "#{path.map(&:to_s).join(".")}.#{name}"
+                    when String
+                      "#{path}.#{name}"
+                    else
+                      name
+                    end
+        data = @db.execute("SELECT value FROM #{table_name} WHERE name = ?", path_name)
+        raise SrubyError, "No value found for #{path_name}" if data.empty?
+        data
       end
     end
 
+    # Get all the values from a table
+    # @param [String] table_name The name of the table
+    # @return [Array] The values
     def all(table_name)
       @db.execute("SELECT * FROM #{table_name}")
     end
-
-    def keys(hash)
-      hash.each_with_object([]) do |(key, value), paths|
-        if value.is_a?(Hash)
-          paths.concat(keys(value))
-        else
-          paths << key
-        end
-      end
-    end
-
-    def path_to(hash, key, path = [])
-      hash.stringify_keys!
-      hash.each_pair do |k, v|
-        return [path + [k], v] if k == key.to_s
-        if v.is_a?(Hash) &&
-          (p = path_to(v, key.to_s, path + [k]))
-          return p
-        end
-      end
-      nil
-    end
-
-    def paths(hash)
-      keys(hash).map { |key| path_to(hash, key) }
-    end
-
-    private :keys, :path_to
   end
 
   class Table
@@ -115,35 +138,19 @@ module Sruby
     end
 
     def insert(*values)
-      case values[0]
-      when Hash
-        values[0].stringify_keys!
-        values[0].each do |value|
-          @db.execute("INSERT INTO #{@name} (name, value) VALUES (?, ?)", value)
-        end
-      else
-        @db.execute("INSERT INTO #{@name} (name, value) VALUES (?, ?)", values[0].to_s, values[2])
-      end
+      Database.new(@db).insert(@name, *values)
     end
 
     def update(*values)
-      case values[0]
-      when Hash
-        values[0].stringify_keys!
-        values[0].each do |value|
-          @db.execute("REPLACE INTO #{@name} (name, value) VALUES (?, ?)", value)
-        end
-      else
-        @db.execute("REPLACE INTO #{@name} (name, value) VALUES (?, ?)", values[0].to_s, values[2])
-      end
+      Database.new(@db).update(@name, *values)
     end
 
-    def get(name)
-      @db.execute("SELECT value FROM #{@name} WHERE name = ?", name).first
+    def get(name, path = nil)
+      Database.new(@db).get(@name, name, path)
     end
 
     def all
-      @db.execute("SELECT * FROM #{@name}")
+      Database.new(@db).all(@name)
     end
   end
 end
