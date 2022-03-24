@@ -21,7 +21,20 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+To use the librairy, you need to create a database:
+
+```rb
+db = Sruby::Database.new('my_database.db')
+```
+
+Then you can create a table:
+```rb
+db.create('my_table')
+```
+
+Table creation creates a new getter callable from `db.my_table`, which returns a `Sruby::Table` object.
+To manage data you can use the `insert` or`update` methods.
+You can get get the data with the `get` and `all` methods.
 
 ## Development
 
