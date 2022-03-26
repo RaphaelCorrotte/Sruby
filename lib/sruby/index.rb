@@ -66,7 +66,7 @@ module Sruby
         @db.execute("INSERT INTO #{table_name} (name, value) VALUES (?, ?)", values[0].to_s, values[1])
       end
     rescue SQLite3::ConstraintException
-      raise SrubyError, "Duplicate key"
+      raise SrubyError, "Duplicated key"
     end
 
     # Updates values in a table
@@ -121,6 +121,32 @@ module Sruby
       end
     end
 
+    # Deletes a row from a table
+    # @param [String] table_name The name of the table
+    # @param [String] name The name of the row to delete
+    # @param [Nil, String] path The path to delete
+    # @example
+    # db = Sruby::Database.new
+    # db.create_table("users")
+    # db.insert("users", "person" => "John", "age" => "24")
+    # db.delete("users", "person")
+    # @return [Array] The database object
+    def delete(table_name, name, path = nil)
+      if path.nil?
+        @db.execute("DELETE FROM #{table_name} WHERE name = ?", name)
+      else
+        path_name = case path
+                    when Array
+                      "#{path.map(&:to_s).join(".")}.#{name}"
+                    when String
+                      "#{path}.#{name}"
+                    else
+                      name
+                    end
+        @db.execute("DELETE FROM #{table_name} WHERE name = ?", path_name)
+      end
+    end
+
     # Get all the values from a table
     # @param [String] table_name The name of the table
     # @return [Array] The values
@@ -147,6 +173,10 @@ module Sruby
 
     def get(name, path = nil)
       Database.new(@db).get(@name, name, path)
+    end
+
+    def delete(name, path = nil)
+      Database.new(@db).delete(@name, name, path)
     end
 
     def all
