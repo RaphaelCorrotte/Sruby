@@ -1,3 +1,4 @@
+[![Les Laboratoires Ruby](https://invidget.switchblade.xyz/4P7XcmbDnt)](https://discord.gg/4P7XcmbDnt)
 # Sruby
 
 Sruby is a Ruby Library for easy SQLite interactions. It is a wrapper around the SQLite3 Ruby library.
