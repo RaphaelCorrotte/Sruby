@@ -6,7 +6,7 @@ require File.expand_path("errors.rb", __dir__)
 
 module Sruby
   class Database
-    attr_reader :db
+    attr_reader :db, :tables
 
     # Creates a new database object
     # @param [String, Hash, Sqlite3::Database] options The database file to open, or a hash of options
@@ -38,9 +38,18 @@ module Sruby
         );
       SQL
 
-      Database.attr_accessor table_name
-      instance_variable_set("@#{table_name}", Table.new(@db, table_name))
-      instance_variable_get("@#{table_name}")
+      @tables ||= Hash.new
+      @tables[table_name] = Table.new(@db, table_name)
+    end
+
+    def [](table_name)
+      @tables ||= Hash.new
+      @tables[table_name.to_s]
+    end
+
+    def method_missing(symbol, *args)
+      return self[symbol] if self[symbol]
+      super
     end
 
     # Insert values into a table
@@ -85,7 +94,6 @@ module Sruby
         values[0].stringify_keys!
         values_as_paths = values[0].paths
         values_as_paths.each do |path, value|
-          p path, value
           @db.execute("REPLACE INTO #{table_name} (name, value) VALUES (?, ?)", path.join("."), value)
         end
       else
